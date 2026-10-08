@@ -616,7 +616,7 @@ const {
         }, { signal });
         window.addEventListener('ntb:dialect-changed', renderAudioTracks, { signal });
         window.addEventListener('ntb:book-loaded', renderAudioTracks, { signal });
-        window.addEventListener('ntb:downloads-changed', () => { renderAudioTracks(); if (downloadsView) renderDownloadsView(); if (!bookSheet?.classList.contains('hidden')) renderBookList(); }, { signal });
+        window.addEventListener('ntb:downloads-changed', () => { renderAudioTracks(); if (downloadsView) renderDownloadsView(); }, { signal });
 
         // Downloads view: every saved track, grouped by book.
         let clearArmed = false;
@@ -636,13 +636,14 @@ const {
           for (const b of books) {
             const byTrack = groups.get(b.code); if (!byTrack) continue;
             const big = b.names[lang] ?? b.names.en, cls = lang === 'bo' ? 'tibetan' : lang === 'cmn' ? 'chinese' : '';
-            html += `<div class="dl-book"><span class="big ${cls}">${big}</span>${lang !== 'en' ? `<span class="sub">${b.names.en}</span>` : ''}</div>`;
+            html += `<div class="dl-group"><div class="dl-book"><span class="big ${cls}">${big}</span>${lang !== 'en' ? `<span class="sub">${b.names.en}</span>` : ''}</div>`;
             for (const d of ['adx', 'bod', 'khg', 'eng', 'cmn'] as Dialect[]) {
               const g = byTrack.get(d); if (!g) continue;
               total += g.bytes;
               const l = DIALECT_LABELS[d], tib = d === 'adx' || d === 'bod' || d === 'khg';
-              html += `<div class="dl-row"><div class="info"><div class="tname" style="display:flex;align-items:baseline;gap:8px">${tib ? `<span class="tibetan" style="font-size:1.2rem">${l.bo}</span>` : ''}<span style="font-size:.95rem;font-weight:700">${l.en}</span></div><div class="meta">${g.n}/${b.chapters} · ${formatMB(g.bytes)}</div></div><button type="button" class="dl-iconbtn" data-rm-track="${b.code}|${d}" aria-label="Remove ${l.en} from ${b.names.en}">${TRASH}</button></div>`;
+              html += `<div class="dl-row"><div class="tname">${tib ? `<span class="tibetan" style="font-size:1.2rem">${l.bo}</span>` : ''}<span style="font-size:.95rem;font-weight:400">${l.en}</span></div><span class="meta">${g.n}/${b.chapters} · ${formatMB(g.bytes)}</span><button type="button" class="dl-iconbtn" data-rm-track="${b.code}|${d}" aria-label="Remove ${l.en} from ${b.names.en}">${TRASH}</button></div>`;
             }
+            html += '</div>';
           }
           list.innerHTML = html || `<div class="dl-empty">${ARROW.replace('width="16" height="16"', 'width="34" height="34"')}</div>`;
           const totalEl = document.getElementById('dl-total'); if (totalEl) totalEl.textContent = html ? formatMB(total) : '';
@@ -677,9 +678,6 @@ const {
         const bookSheetPanel = document.getElementById('book-sheet-panel');
         const bookList = document.getElementById('book-list');
         type BookRow = { code: string; names: Record<string, string> };
-        function bookBytes(code: string): number {
-          return savedUrls().reduce((a, u) => { const q = parseUrl(u); return a + (q && q.book === code ? chapterBytes(q.book, q.track, q.n) : 0); }, 0);
-        }
         function renderBookList() {
           if (!bookList) return;
           const books: BookRow[] = (window as any).__BOOKS__ ?? [];
@@ -689,8 +687,7 @@ const {
             const big = b.names[lang] ?? b.names.en;
             const cls = lang === 'bo' ? 'tibetan' : lang === 'cmn' ? 'chinese' : '';
             return `<button type="button" class="book-row" data-pick-book="${b.code}" aria-current="${b.code === current}">
-              <span class="nm"><span class="big ${cls}">${big}</span>${lang !== 'en' ? `<span class="sub">${b.names.en}</span>` : ''}</span>
-              ${bookBytes(b.code) ? `<span class="bsz">${formatMB(bookBytes(b.code))}</span>` : ''}${b.code === current ? '<span class="tick" aria-hidden="true">✓</span>' : ''}
+              <span class="nm"><span class="big ${cls}">${big}</span>${lang === 'en' ? `<span class="sub tibetan" style="font-weight:400;font-size:1.15rem">${b.names.bo}</span>` : `<span class="sub">${b.names.en}</span>`}</span>
             </button>`;
           }).join('');
         }
@@ -851,21 +848,23 @@ const {
       .dl-clear { border: 1.5px solid rgba(28,23,16,.2); background: #fff; border-radius: 999px; padding: 8px 14px; min-height: 36px; font-size: .86rem; font-weight: 700; cursor: pointer; }
       .dl-clear[disabled] { opacity: .4; cursor: default; }
       .dl-clear.rm { background: #fbf0cf; border-color: #e6cf62; }
-      .dl-book { display: flex; align-items: baseline; gap: 8px; margin: 16px 0 4px; }
-      .dl-book .big { font-size: 1.3rem; }
+      /* Downloads view: each book is one off-white group (same colour as the unselected
+         options in the Text/Audio tabs) holding its title and one line per saved track. */
+      .dl-group { background: #f7f5ef; border-radius: 14px; padding: 8px 14px; margin-top: 12px; }
+      .dl-book { display: flex; align-items: baseline; gap: 8px; margin: 4px 0 2px; }
+      .dl-book .big { font-size: 1.3rem; font-weight: 700; }
       .dl-book .sub { font-size: .95rem; font-weight: 700; }
-      .dl-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid rgba(28,23,16,.12); }
-      .dl-row .info { flex: 1; min-width: 0; }
-      .dl-row .meta { font-size: .8rem; color: rgba(28,23,16,.55); font-variant-numeric: tabular-nums; }
+      .dl-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; min-height: 44px; }
+      .dl-row .tname { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+      .dl-row .meta { margin-left: auto; font-size: .8rem; color: rgba(28,23,16,.6); font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .dl-row .dl-iconbtn { flex: none; margin-right: -6px; }
       .dl-empty { padding: 44px 0 36px; text-align: center; color: rgba(28,23,16,.45); }
-      .book-row { display: flex; align-items: center; gap: 12px; width: 100%; border: 0; background: none; text-align: left; padding: 12px 4px; border-bottom: 1px solid rgba(28,23,16,.12); min-height: 60px; cursor: pointer; }
-      .book-row:last-child { border-bottom: 0; }
+      /* Book picker rows look like the Text tab's option buttons: off-white, gold when current. */
+      .book-row { display: flex; align-items: center; width: 100%; border: 0; border-radius: 12px; background: #f7f5ef; text-align: left; padding: 10px 16px; min-height: 64px; margin-bottom: 10px; cursor: pointer; }
+      .book-row[aria-current="true"] { background: #cfb63c; }
       .book-row .nm { display: flex; flex-direction: column; min-width: 0; }
       .book-row .nm .big { font-size: 1.4rem; line-height: 1.25; }
       .book-row .nm .sub { font-size: .95rem; font-weight: 700; }
-      .book-row .tick { margin-left: auto; color: #1c1710; }
-      .book-row .bsz { margin-left: auto; font-size: .85rem; color: rgba(28,23,16,.55); font-variant-numeric: tabular-nums; }
-      .book-row .bsz + .tick { margin-left: 8px; }
     </style>
   </body>
 </html>
