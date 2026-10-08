@@ -1,0 +1,10 @@
+{
+  // Cloudflare Workers static assets: serves dist/ (the app shell + data + images).
+  // not_found_handling makes /esther/3 style URLs serve the one shell (client-side
+  // routes). Audio is NOT here — it lives in the R2 bucket `ntb` on audio.<domain>.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ntb-all",
+  "compatibility_date": "2026-10-01",
+  "assets": { "directory": "./dist", "not_found_handling": "single-page-application" },
+  "routes": [{ "pattern": "new-tibetan-bible.app", "custom_domain": true }]
+}

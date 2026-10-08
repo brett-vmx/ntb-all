@@ -1,0 +1,871 @@
+---
+import '../styles/global.css';
+import { ViewTransitions } from 'astro:transitions';
+import logoWordmark from '../assets/branding/ntb-navbar-wordmark-gold.png';
+import { Image } from 'astro:assets';
+import { Share2, Info, Settings, ChevronDown, Check } from '@lucide/astro';
+import { DIALECT_LABELS } from '../i18n/settings-store';
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = 'New Tibetan Bible',
+  description = 'The New Tibetan Bible in Amdo, Kham, and Central Tibetan, with audio narration, plus English, Chinese, Hindi and Nepali text.',
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="bo">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#CFB63C" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="New Tibetan Bible" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <script src="/registerSW.js" is:inline></script>
+    <title>{title}</title>
+    <!-- Astro's ClientRouter treats ANY popstate as a real page-transition
+         target and fetches/morphs whatever page matches the URL —
+         including our own history.pushState('/chapter/N') calls for the
+         SPA chapter modal (index.astro), which aren't real navigations at
+         all. Landing back on the *static* /chapter/[n].astro fallback page
+         after using the browser's back/forward buttons is the visible
+         symptom. This is a known, unresolved Astro bug:
+         github.com/withastro/astro/issues/13943 ("ClientRouter Triggers
+         Full Reload on history.back() from Manually Pushed State") — no
+         official fix exists, so this script (which registers its listener
+         before <ViewTransitions />'s own script runs, since it's earlier
+         in the document) intercepts popstate first and calls
+         stopImmediatePropagation() so Astro's router never sees the event
+         and never fetches the wrong page. It re-dispatches as a custom
+         event so index.astro's own modal logic (which has the actual
+         open/close functions in scope) can still react to it. Don't
+         remove this or move it after <ViewTransitions /> — order matters,
+         since listeners on the same target run in registration order. -->
+    <script is:inline>
+      window.addEventListener('popstate', function (e) {
+        e.stopImmediatePropagation();
+        window.dispatchEvent(new CustomEvent('ntb:popstate', { detail: { state: e.state } }));
+      });
+    </script>
+    <ViewTransitions />
+  </head>
+  <body class="min-h-screen flex flex-col">
+    <!-- App shell: narrow, fixed-width column even on desktop (matches tenpa.app) -->
+    <header class="bg-gold text-ink relative z-[210]">
+      <div
+        class="max-w-[448px] mx-auto relative flex items-center justify-between px-4"
+        style="padding-top: max(1.25rem, env(safe-area-inset-top)); padding-bottom: 0.875rem"
+      >
+        <!-- No fixed header height here on purpose — a fixed h-[56px] plus a
+             large safe-area padding-top squeezed the flex row's own content
+             box shorter than the logo, so the logo spilled out past the
+             header's bottom edge. Letting the row size from its own content
+             (padding-top + tallest child + padding-bottom) means the header
+             simply grows taller on deep-notch devices instead of clipping.
+             Logo is now John's Tibetan-wordmark lockup (gold pill, embossed
+             black text) — it's a self-contained graphic with its own
+             background/shape, unlike the old transparent icon mark, so no
+             CSS rounded-full/border treatment on top of it any more. -->
+        <!-- Logo swaps for plain "New Tibetan Bible" text in English mode
+             (John: the Tibetan wordmark image doesn't read as English) —
+             see updateHeaderTitle() below. Only reactive on pages using the
+             default title (the main app chrome); the static /chapter/[n]
+             fallback page passes its own custom title and isn't part of
+             the language-toggle experience, so it keeps the Tibetan logo
+             and its own title untouched regardless of reading language. -->
+        <Image id="header-logo-img" src={logoWordmark} alt="New Tibetan Bible" width={168} height={51} class="h-8 w-auto shrink-0" />
+        <span id="header-logo-text" class="hidden text-xs font-bold whitespace-nowrap shrink-0" style="letter-spacing:-.01em">New Tibetan Bible</span>
+
+        <!-- Book picker: the current book's name (in the reading language) is a
+             button that opens the list of finished books (#book-sheet below).
+             updateHeaderTitle() keeps the name in sync; max-width + truncate keep a
+             long name from running into the logo or the icons at 375px. -->
+        <button
+          id="book-btn"
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded="false"
+          aria-label="Choose a book"
+          class="absolute left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-full px-3 py-1 text-ink"
+          style="max-width:38%"
+        >
+          <span
+            id="header-title"
+            data-reactive-title={title === 'New Tibetan Bible' ? 'true' : 'false'}
+            class="tibetan text-lg font-bold whitespace-nowrap truncate"
+          >{title === 'New Tibetan Bible' ? '' : title}</span>
+          <ChevronDown size={16} stroke-width={3} class="shrink-0" />
+        </button>
+
+        <div class="flex items-center gap-2 shrink-0">
+          <!-- Reading + audio settings. Back to a `Settings` gear (was
+               briefly the `Type` icon while this sheet was text-only) —
+               adding Chinese/English brought the Tibetan-dialect picker
+               back into this sheet (conditionally, see below), so it's
+               reading AND audio settings again, same as the gear's
+               original job. -->
+          <div class="relative w-8 shrink-0">
+            <button id="settings-btn" type="button" aria-label="Reading and audio settings" class="flex items-center justify-center text-ink">
+              <Settings size={22} />
+            </button>
+          </div>
+
+          <!-- About button + sheet -->
+          <div class="relative w-8 shrink-0">
+            <button id="about-btn" type="button" aria-label="About" class="flex items-center justify-center text-ink">
+              <Info size={22} />
+            </button>
+          </div>
+
+          <!-- Share button + popover -->
+          <div class="relative w-8 shrink-0">
+            <button id="share-btn" type="button" aria-label="Share" class="flex items-center justify-end text-ink">
+              <Share2 size={22} />
+            </button>
+            <div
+              id="share-popover"
+              class="absolute top-full right-0 mt-2 hidden z-[250] bg-white border border-ink/10 rounded-xl shadow-xl overflow-hidden min-w-[148px]"
+            >
+              <button id="share-copy" type="button" class="w-full text-left px-4 py-3 text-sm text-ink hover:bg-ink/5 active:bg-ink/10 transition-colors">
+                Copy link
+              </button>
+              <button id="share-native" type="button" class="w-full text-left px-4 py-3 text-sm text-ink hover:bg-ink/5 active:bg-ink/10 transition-colors hidden border-t border-ink/10">
+                Share…
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="flex-1 w-full bg-page" transition:animate="fade">
+      <div class="max-w-[448px] mx-auto">
+        <slot />
+      </div>
+    </main>
+
+    <!-- ─── Reading + audio settings bottom sheet ───
+         The dim backdrop is decorative only (pointer-events-none) so touches
+         pass through to whatever is behind the sheet (chapter text, homepage)
+         and it stays scrollable while the sheet is open — closing on an
+         outside tap is handled by a document-level listener in the script
+         below instead of a backdrop click handler. -->
+    <div id="settings-sheet" class="fixed inset-0 z-[300] hidden pointer-events-none">
+      <div id="settings-sheet-backdrop" class="absolute inset-0 bg-black/50 pointer-events-none"></div>
+      <div class="absolute inset-x-0 bottom-0 flex justify-center pointer-events-none">
+        <div id="settings-sheet-panel" class="w-full max-w-[448px] bg-white rounded-t-2xl max-h-[85vh] overflow-y-auto pointer-events-auto" style="padding-bottom: max(0rem, env(safe-area-inset-bottom))">
+          <div class="settings-tabs" role="tablist" aria-label="Settings sections">
+            <button type="button" id="stab-text" role="tab" aria-controls="settings-panel-text" aria-selected="true" data-stab="text"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>Text</button>
+            <button type="button" id="stab-audio" role="tab" aria-controls="settings-panel-audio" aria-selected="false" tabindex="-1" data-stab="audio"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 14v-4a9 9 0 0 1 18 0v4"/><path d="M21 16a2 2 0 0 1-2 2h-1a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3z"/><path d="M3 16a2 2 0 0 0 2 2h1a1 1 0 0 0 1-1v-4a1 1 0 0 0-1-1H3z"/></svg>Audio</button>
+          </div>
+          <div id="settings-panel-text" role="tabpanel" aria-labelledby="stab-text" class="p-5">
+          <p class="text-xs font-bold uppercase tracking-widest text-ink/50 mb-2">Language</p>
+          <div class="flex gap-3 mb-3">
+            <button type="button" data-pick-textlang="bo" class="textlang-btn tibetan flex-1 rounded-xl py-3 text-base font-semibold">བོད་ཡིག</button>
+            <button type="button" data-pick-textlang="en" class="textlang-btn flex-1 rounded-xl py-3 text-base font-semibold">English</button>
+            <button type="button" data-pick-textlang="cmn" class="textlang-btn chinese flex-1 rounded-xl py-3 text-base font-semibold">中文</button>
+          </div>
+          <!-- Hindi/Nepali — text only, no audio track of their own (John:
+               no capacity yet for timing files, and no one to verify
+               recordings), so they're a second row under the 3 languages
+               that do have audio, not squeezed into the same row. Picking
+               either one leaves the dialect/audio setting untouched (see
+               setTextLang() in settings-store.ts) — the reader's existing
+               audio choice, from any of the 5 LISTEN-bar options, keeps
+               playing under the new text. -->
+          <div class="flex gap-3 mb-5">
+            <button type="button" data-pick-textlang="hi" class="textlang-btn flex-1 rounded-xl py-3 text-base font-semibold">हिन्दी</button>
+            <button type="button" data-pick-textlang="ne" class="textlang-btn flex-1 rounded-xl py-3 text-base font-semibold">नेपाली</button>
+          </div>
+
+          <div id="font-row-wrap">
+            <p class="text-xs font-bold uppercase tracking-widest text-ink/50 mb-2">Tibetan font</p>
+            <div class="flex gap-3 mb-5">
+              <button type="button" data-pick-font="ouchan2" style="font-family:'Monlam Uni OuChan2',sans-serif" class="font-btn flex-1 h-16 rounded-xl flex items-center justify-center text-3xl">ཨ</button>
+              <button type="button" data-pick-font="choukmatik" style="font-family:'Monlam Uni ChoukMatik',sans-serif" class="font-btn flex-1 h-16 rounded-xl flex items-center justify-center text-3xl">ཨ</button>
+              <button type="button" data-pick-font="dutsa2" style="font-family:'Monlam Uni Dutsa2',sans-serif" class="font-btn flex-1 h-16 rounded-xl flex items-center justify-center text-3xl">ཨ</button>
+            </div>
+          </div>
+
+          <p class="text-xs font-bold uppercase tracking-widest text-ink/50 mb-2">Text size</p>
+          <div class="flex gap-3 mb-5">
+            <button type="button" data-pick-size="sm" class="size-btn flex-1 rounded-xl py-3" style="font-size:1rem">A</button>
+            <button type="button" data-pick-size="md" class="size-btn flex-1 rounded-xl py-3" style="font-size:1.2rem">A</button>
+            <button type="button" data-pick-size="lg" class="size-btn flex-1 rounded-xl py-3" style="font-size:1.4rem">A</button>
+            <button type="button" data-pick-size="xl" class="size-btn flex-1 rounded-xl py-3" style="font-size:1.6rem">A</button>
+          </div>
+
+          <p class="text-xs font-bold uppercase tracking-widest text-ink/50 mb-2">Layout</p>
+          <div class="flex gap-3">
+            <button type="button" data-pick-layout="verse" aria-label="Verse-by-verse" class="layout-btn flex-1 rounded-xl py-3 text-xl font-semibold">1 2 3</button>
+            <button type="button" data-pick-layout="paragraph" aria-label="Paragraph" class="layout-btn flex-1 rounded-xl py-3 text-xl font-semibold">¶</button>
+          </div>
+          </div>
+          <!-- Audio tab: pick the audio track for this book. Phase 4 adds each track's
+               chapter downloads inside the same boxes. Rows are drawn by
+               renderAudioTracks() from the book's available tracks. -->
+          <div id="settings-panel-audio" role="tabpanel" aria-labelledby="stab-audio" class="p-5 hidden">
+            <div id="audio-tracks" role="radiogroup" aria-label="Audio track"></div>
+            <button type="button" id="open-downloads" class="all-dl-row"></button>
+          </div>
+          <!-- Downloads view: everything saved on this device, across all books. It
+               replaces the tabs while open (back arrow returns to Audio). -->
+          <div id="settings-panel-downloads" class="hidden" role="region" aria-label="Downloads">
+            <div class="dl-head">
+              <button type="button" id="dl-back" class="dl-iconbtn" aria-label="Back to Settings"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+              <h3>Downloads</h3>
+              <span id="dl-total" class="dl-total"></span>
+              <button type="button" id="dl-clear" class="dl-clear">Clear all</button>
+            </div>
+            <div id="dl-list" class="px-5 pb-5"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── Book picker bottom sheet ─── Same pass-through backdrop pattern as the
+         settings sheet (pointer-events-none; close on an outside tap via a document
+         listener). Rows are drawn from window.__BOOKS__ (only finished books are in
+         /data/books.json). -->
+    <div id="book-sheet" class="fixed inset-0 z-[300] hidden pointer-events-none">
+      <div class="absolute inset-0 bg-black/50 pointer-events-none"></div>
+      <div class="absolute inset-x-0 bottom-0 flex justify-center pointer-events-none">
+        <div id="book-sheet-panel" role="dialog" aria-label="Books" class="w-full max-w-[448px] bg-white rounded-t-2xl max-h-[85vh] overflow-y-auto pointer-events-auto px-5 pt-3" style="padding-bottom: max(1.25rem, env(safe-area-inset-bottom))">
+          <div class="mx-auto mb-2 h-1 w-10 rounded bg-ink/15"></div>
+          <div id="book-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── About sheet ─── John's requested "info" page (originally ntb-jonah's
+         request #12). Same dim-backdrop/outside-click-close pattern as the
+         settings sheet, plus an explicit close button since its content is
+         longer/scrollable (matches the chapter modal's own close-button
+         treatment). Cover art is esther-about-banner.webp — a Sweet
+         Publishing-style illustration (Esther at the palace pillars) with
+         John's own logo + Tibetan "Esther" wordmark composited into the
+         bottom-right corner. Source (source-assets/images/esther-about-
+         banner.jpg, 1597×1920, ~1.1MB) is resized to 896×1077 — 2x the
+         display size, for retina sharpness on a prominent hero image — and
+         converted to webp (Pillow, quality 82, ~166KB); see "About page" in
+         CLAUDE.md. -->
+    <div id="about-sheet" class="fixed inset-0 z-[300] hidden pointer-events-none">
+      <div id="about-sheet-backdrop" class="absolute inset-0 bg-black/50 pointer-events-none"></div>
+      <div class="absolute inset-x-0 bottom-0 flex justify-center pointer-events-none md:inset-0 md:items-center">
+        <div id="about-sheet-panel" class="relative w-full max-w-[448px] bg-white rounded-t-2xl md:rounded-2xl max-h-[85vh] overflow-y-auto pointer-events-auto">
+          <button id="about-close" type="button" aria-label="Close about"
+            style="position:absolute;top:.75rem;right:.75rem;z-index:10;width:2.25rem;height:2.25rem;display:flex;align-items:center;justify-content:center;border-radius:9999px;background:#CFB63C;border:none;cursor:pointer;color:#000;box-shadow:0 1px 3px rgba(0,0,0,.2)">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+          <img id="about-banner" src="" alt="" width="448" height="539" style="width:100%;height:auto;display:block" />
+          <div id="about-content" style="padding:0 1.5rem 2rem"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── Toast ─── -->
+    <div id="share-toast" class="fixed bottom-8 left-1/2 -translate-x-1/2 z-[400] pointer-events-none" style="transition:opacity .25s ease;opacity:0">
+      <div class="bg-ink text-white text-sm font-medium px-4 py-2 rounded-full shadow-lg whitespace-nowrap">Link copied!</div>
+    </div>
+
+    <script>
+      import {
+        getBook, setBook,
+        AVAILABLE_DIALECTS, DIALECT_LABELS,
+        getTextLang, setTextLang,
+        getFont, setFont,
+        getTextSize, setTextSize,
+        getTextLayout, setTextLayout,
+        getDialect, setDialect,
+        applyTextSettings,
+      } from '../i18n/settings-store';
+      import type { Dialect } from '../i18n/settings-store';
+      import { audioUrl, isSaved, progressOf, chapterBytes, formatMB, save, remove, removeMany, saveMany, cancelMany, clearAll, savedUrls, parseUrl } from '../lib/downloads';
+
+      // Re-initializes on every ViewTransitions swap (astro:page-load fires on
+      // first load too, not just subsequent navigations). Without this guard,
+      // header buttons stop responding after the first `history.back()` from
+      // a chapter deep link, because top-level <script> in Astro is an ES
+      // module that only evaluates once — it never reruns its listener
+      // bindings on later swaps. The AbortController drops the previous
+      // run's listeners first so repeated swaps never double-bind the same
+      // persisted DOM nodes (same pattern as index.astro's modal init).
+      function initHeader() {
+        const prevAbort = (window as any).__headerAbort as AbortController | undefined;
+        if (prevAbort) prevAbort.abort();
+        const abort = new AbortController();
+        (window as any).__headerAbort = abort;
+        const { signal } = abort;
+
+        applyTextSettings();
+
+        // Header title/logo react to reading language (John: title should
+        // say "Esther" in Tibetan when reading Tibetan, and the logo should
+        // become plain "New Tibetan Bible" text in English — the Tibetan
+        // wordmark image doesn't read as English). Skipped on pages that
+        // pass a custom title (the static /chapter/[n] fallback) — see the
+        // data-reactive-title comment above.
+        const headerTitleEl = document.getElementById('header-title');
+        const headerLogoImg = document.getElementById('header-logo-img');
+        const headerLogoText = document.getElementById('header-logo-text');
+        // The current book's name in each reading language's own script/word —
+        // from /data/books.json (names.{bo,en,cmn,hi,ne}), published by index.astro's
+        // loader as window.__BOOKS__. Empty until that list has loaded.
+        function currentBookNames(): Record<string, string> | null {
+          const books = (window as any).__BOOKS__ as { code: string; names: Record<string, string> }[] | undefined;
+          const code = (window as any).__BOOK_CODE__ as string | undefined;
+          return books?.find((b) => b.code === code)?.names ?? null;
+        }
+        // Org-name text logo (John's request #33) — Chinese has its own
+        // confirmed name now, 藏文圣经新译本, not a guessed translation like
+        // the placeholder reasoning this replaced; English/Hindi/Nepali
+        // still fall back to the plain English org name (no separate
+        // Hindi/Nepali translation exists).
+        const ORG_NAME_LOGO: Record<string, string> = { cmn: '藏文圣经新译本' };
+        function updateHeaderTitle() {
+          if (headerTitleEl?.dataset.reactiveTitle !== 'true') return;
+          const lang = getTextLang();
+          const names = currentBookNames();
+          headerTitleEl.textContent = names ? (names[lang] ?? names.en) : '';
+          const bannerEl = document.getElementById('about-banner') as HTMLImageElement | null;
+          const bookCode = (window as any).__BOOK_CODE__ as string | undefined;
+          if (bannerEl && bookCode && !bannerEl.src.endsWith(`/img/${bookCode}/about-banner.webp`)) bannerEl.src = `/img/${bookCode}/about-banner.webp`;
+          headerTitleEl.classList.toggle('tibetan', lang === 'bo');
+          headerTitleEl.classList.toggle('chinese', lang === 'cmn');
+          // Logo: image only in Tibetan mode, text otherwise (English,
+          // Chinese, Hindi, Nepali) — Chinese now shows its own confirmed
+          // org name (see ORG_NAME_LOGO above); Hindi/Nepali still fall
+          // back to the English text, same "no dedicated asset/translation
+          // yet" reasoning as before.
+          headerLogoImg?.classList.toggle('hidden', lang !== 'bo');
+          headerLogoText?.classList.toggle('hidden', lang === 'bo');
+          if (headerLogoText) {
+            headerLogoText.textContent = ORG_NAME_LOGO[lang] ?? 'New Tibetan Bible';
+            headerLogoText.classList.toggle('chinese', lang === 'cmn');
+          }
+        }
+        updateHeaderTitle();
+        window.addEventListener('ntb:text-settings-changed', updateHeaderTitle, { signal });
+        window.addEventListener('ntb:book-changed', updateHeaderTitle, { signal });
+        window.addEventListener('ntb:book-loaded', updateHeaderTitle, { signal });
+
+        // Expose the header's real rendered height as a CSS var so the
+        // chapter modal (index.astro) can cap its own height to never grow
+        // up into the header's space. The header sits at z-[210], above the
+        // chapter modal's z-index, specifically so its own gear/share
+        // buttons stay reachable while a chapter is open — but that means
+        // if the modal's sheet is tall enough to reach the header's row, its
+        // own title/close button render *behind* the (opaque) header and
+        // become invisible/unreachable, not just visually crowded. Safe-area
+        // insets make the header's height vary a lot by device, so this is
+        // measured, not assumed.
+        const headerEl = document.querySelector('header');
+        function updateHeaderHeightVar() {
+          if (headerEl) document.documentElement.style.setProperty('--header-h', `${headerEl.getBoundingClientRect().height}px`);
+        }
+        updateHeaderHeightVar();
+        window.addEventListener('resize', updateHeaderHeightVar, { signal });
+
+        // ─── Share popover ───
+        const shareBtn = document.getElementById('share-btn');
+        const sharePopover = document.getElementById('share-popover');
+        const shareCopy = document.getElementById('share-copy');
+        const shareNative = document.getElementById('share-native');
+        const shareToast = document.getElementById('share-toast') as HTMLElement | null;
+
+        if (navigator.share && shareNative) shareNative.classList.remove('hidden');
+
+        let toastTimer: ReturnType<typeof setTimeout> | null = null;
+        function showToast() {
+          if (!shareToast) return;
+          if (toastTimer) clearTimeout(toastTimer);
+          shareToast.style.opacity = '1';
+          toastTimer = setTimeout(() => { shareToast.style.opacity = '0'; }, 2000);
+        }
+
+        shareBtn?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          sharePopover?.classList.toggle('hidden');
+        }, { signal });
+        document.addEventListener('click', (e) => {
+          if (sharePopover && !sharePopover.classList.contains('hidden')) {
+            if (!shareBtn?.contains(e.target as Node) && !sharePopover.contains(e.target as Node)) {
+              sharePopover.classList.add('hidden');
+            }
+          }
+        }, { signal });
+        shareCopy?.addEventListener('click', async () => {
+          sharePopover?.classList.add('hidden');
+          try {
+            await navigator.clipboard.writeText(window.location.href);
+            showToast();
+          } catch {}
+        }, { signal });
+        shareNative?.addEventListener('click', async () => {
+          sharePopover?.classList.add('hidden');
+          try {
+            await navigator.share({ title: 'New Tibetan Bible', url: window.location.href });
+          } catch {}
+        }, { signal });
+
+        // ─── Reading + audio settings sheet ───
+        const settingsSheet = document.getElementById('settings-sheet');
+        const settingsSheetPanel = document.getElementById('settings-sheet-panel');
+        const settingsBtn = document.getElementById('settings-btn');
+        const fontRowWrap = document.getElementById('font-row-wrap');
+        const textLangBtns = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-pick-textlang]'));
+        const fontBtns = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-pick-font]'));
+        const sizeBtns = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-pick-size]'));
+        const layoutBtns = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-pick-layout]'));
+
+        function refreshSettingsSheet() {
+          const lang = getTextLang();
+          const font = getFont();
+          const size = getTextSize();
+          const layout = getTextLayout();
+
+          textLangBtns.forEach((b) => {
+            const active = b.dataset.pickTextlang === lang;
+            b.classList.toggle('bg-gold', active);
+            b.classList.toggle('bg-page', !active);
+          });
+          // The Tibetan-font row is a Tibetan-only concern.
+          if (fontRowWrap) fontRowWrap.style.display = lang === 'bo' ? '' : 'none';
+          renderAudioTracks();
+          fontBtns.forEach((b) => {
+            const active = b.dataset.pickFont === font;
+            b.classList.toggle('bg-gold', active);
+            b.classList.toggle('bg-page', !active);
+          });
+          sizeBtns.forEach((b) => {
+            const active = b.dataset.pickSize === size;
+            b.classList.toggle('bg-gold', active);
+            b.classList.toggle('bg-page', !active);
+          });
+          layoutBtns.forEach((b) => {
+            const active = b.dataset.pickLayout === layout;
+            b.classList.toggle('bg-gold', active);
+            b.classList.toggle('bg-page', !active);
+          });
+        }
+
+        settingsBtn?.addEventListener('click', () => {
+          if (downloadsView) showDownloadsView(false);
+          settingsSheet?.classList.remove('hidden');
+          refreshSettingsSheet();
+        }, { signal });
+        // Backdrop has pointer-events:none (so the page stays scrollable
+        // behind the sheet) — close on any outside click/tap instead.
+        document.addEventListener('click', (e) => {
+          if (!settingsSheet || settingsSheet.classList.contains('hidden')) return;
+          const target = e.target as Node;
+          // A click on something a handler just re-rendered is detached by now — it was
+          // inside the sheet, so it is not an outside tap.
+          if (!document.contains(target)) return;
+          if (settingsSheetPanel?.contains(target) || settingsBtn?.contains(target)) return;
+          settingsSheet.classList.add('hidden');
+        }, { signal });
+
+        textLangBtns.forEach((b) => b.addEventListener('click', () => {
+          setTextLang(b.dataset.pickTextlang as 'bo' | 'en' | 'cmn');
+          // Text size is language-dependent now (Tibetan reads +2px larger
+          // at every step) — re-apply here, same as the font/size handlers
+          // below, not just when font/size themselves change.
+          applyTextSettings();
+          refreshSettingsSheet();
+        }, { signal }));
+        fontBtns.forEach((b) => b.addEventListener('click', () => {
+          setFont(b.dataset.pickFont as 'ouchan2' | 'choukmatik' | 'dutsa2');
+          applyTextSettings();
+          refreshSettingsSheet();
+        }, { signal }));
+        sizeBtns.forEach((b) => b.addEventListener('click', () => {
+          setTextSize(b.dataset.pickSize as 'sm' | 'md' | 'lg' | 'xl');
+          applyTextSettings();
+          refreshSettingsSheet();
+        }, { signal }));
+        layoutBtns.forEach((b) => b.addEventListener('click', () => {
+          setTextLayout(b.dataset.pickLayout as 'verse' | 'paragraph');
+          refreshSettingsSheet();
+        }, { signal }));
+
+        // ─── Settings tabs (Text | Audio) ───
+        const tabBtns = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-stab]'));
+        const panelText = document.getElementById('settings-panel-text');
+        const panelAudio = document.getElementById('settings-panel-audio');
+        function showSettingsTab(name: 'text' | 'audio', focus = false) {
+          tabBtns.forEach((b) => {
+            const on = b.dataset.stab === name;
+            b.setAttribute('aria-selected', String(on));
+            b.tabIndex = on ? 0 : -1;
+            if (on && focus) b.focus();
+          });
+          panelText?.classList.toggle('hidden', name !== 'text');
+          panelAudio?.classList.toggle('hidden', name !== 'audio');
+        }
+        tabBtns.forEach((b) => {
+          b.addEventListener('click', () => showSettingsTab(b.dataset.stab as 'text' | 'audio'), { signal });
+          b.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+              e.preventDefault();
+              showSettingsTab(b.dataset.stab === 'text' ? 'audio' : 'text', true);
+            }
+          }, { signal });
+        });
+
+        // ─── Audio tab: tracks, per-chapter downloads, Downloads view ───
+        // One box per track the current book has (AVAILABLE_DIALECTS is set by
+        // index.astro when a book loads). The selected track expands to show its
+        // chapter grid. Saved state comes from src/lib/downloads.ts (Cache Storage).
+        let rmKey: string | null = null; // a saved chapter/track waiting for its second tap to remove
+        let downloadsView = false;
+        const CHECK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+        const ARROW = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>';
+        const TRASH = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+        const bookCode = () => (window as any).__BOOK_CODE__ as string;
+        const chapterNumbers = (): number[] => (((window as any).__CHAPTERS__ ?? []) as { chapterNumber: number }[]).map((c) => c.chapterNumber);
+        const trackUrls = (track: string) => chapterNumbers().map((n) => audioUrl(bookCode(), track, n));
+        const sumBytes = (track: string, only?: (n: number) => boolean) => chapterNumbers().filter((n) => !only || only(n)).reduce((a, n) => a + chapterBytes(bookCode(), track, n), 0);
+
+        function allButton(track: string): string {
+          const urls = trackUrls(track), n = urls.length;
+          const got = urls.filter(isSaved).length;
+          const busy = urls.filter((u) => progressOf(u) !== null).length;
+          const left = sumBytes(track, (c) => !isSaved(audioUrl(bookCode(), track, c)));
+          const nm = DIALECT_LABELS[track as Dialect].en;
+          if (busy) return `<div class="allbox"><span class="allsz">${formatMB(left)}</span><button type="button" class="allbtn" data-all="${track}" data-fk="all-${track}" aria-label="Cancel downloading ${nm}">${CHECK.replace('<path d="M20 6 9 17l-5-5"/>', '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>')}All</button></div>`;
+          if (got === n && n > 0) {
+            const confirm = rmKey === `all|${track}`;
+            return `<div class="allbox"><span class="allsz">${formatMB(sumBytes(track))}</span><button type="button" class="allbtn ${confirm ? 'rm' : 'dark'}" data-all="${track}" data-fk="all-${track}" aria-label="${confirm ? `Remove all ${nm} chapters from this device` : `All ${nm} chapters saved. Tap to remove`}">${confirm ? TRASH : CHECK}${confirm ? 'Remove' : 'All'}</button></div>`;
+          }
+          return `<div class="allbox"><span class="allsz">${formatMB(left)}</span><button type="button" class="allbtn" data-all="${track}" data-fk="all-${track}" aria-label="Download all ${nm} chapters, ${formatMB(left)}">${ARROW}All</button></div>`;
+        }
+        function chapterCell(track: string, c: number): string {
+          const url = audioUrl(bookCode(), track, c), p = progressOf(url), key = `${track}|${c}`;
+          const nm = DIALECT_LABELS[track as Dialect].en;
+          if (isSaved(url) && rmKey === key) return `<button type="button" class="chcell rm" data-ch="${track}|${c}" data-fk="ch-${track}-${c}" aria-label="Remove chapter ${c} from this device">${TRASH}</button>`;
+          if (isSaved(url)) return `<button type="button" class="chcell dark" data-ch="${track}|${c}" data-fk="ch-${track}-${c}" aria-label="Chapter ${c}, saved. Tap to remove">${c}</button>`;
+          if (p !== null) return `<button type="button" class="chcell" data-ch="${track}|${c}" data-fk="ch-${track}-${c}" aria-label="Chapter ${c}, downloading. Tap to cancel">${c}<span class="bar" style="width:${Math.round(p * 100)}%"></span></button>`;
+          return `<button type="button" class="chcell" data-ch="${track}|${c}" data-fk="ch-${track}-${c}" aria-label="Download ${nm} chapter ${c}, ${formatMB(chapterBytes(bookCode(), track, c))}">${c}</button>`;
+        }
+        function renderAudioTracks() {
+          const host = document.getElementById('audio-tracks');
+          if (!host || !(window as any).__CHAPTERS__) return;
+          const active = document.activeElement as HTMLElement | null;
+          const focusKey = active && host.contains(active) ? active.dataset.fk ?? (active.dataset.pickTrack ? `trk-${active.dataset.pickTrack}` : null) : null;
+          const current = getDialect();
+          host.innerHTML = AVAILABLE_DIALECTS.map((d) => {
+            const tibetan = d === 'adx' || d === 'bod' || d === 'khg';
+            const label = DIALECT_LABELS[d];
+            const cur = d === current;
+            return `<div class="tbox${cur ? ' cur' : ''}">
+              <div class="thead">
+                <button type="button" class="track-row" role="radio" aria-checked="${cur}" aria-expanded="${cur}" data-pick-track="${d}">
+                  <span class="radio"></span>
+                  <span class="tname">${tibetan ? `<span class="tibetan">${label.bo}</span>` : ''}<span class="en">${label.en}</span></span>
+                </button>
+                ${allButton(d)}
+              </div>
+              ${cur ? `<div class="tbody"><p class="eyebrow">Chapter Downloads <span class="cnt">(${chapterNumbers().filter((c) => isSaved(audioUrl(bookCode(), d, c))).length}/${chapterNumbers().length})</span></p><div class="chs">${chapterNumbers().map((c) => chapterCell(d, c)).join('')}</div></div>` : ''}
+            </div>`;
+          }).join('');
+          const total = savedUrls().reduce((a, u) => { const q = parseUrl(u); return a + (q ? chapterBytes(q.book, q.track, q.n) : 0); }, 0);
+          const row = document.getElementById('open-downloads');
+          if (row) row.innerHTML = `${ARROW.replace('width="16" height="16"', 'width="20" height="20"')}<span>All Downloads</span><span class="sz">${total ? formatMB(total) : ''}</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>`;
+          if (focusKey) host.querySelector<HTMLElement>(`[data-fk="${focusKey}"], [data-pick-track="${focusKey.replace('trk-', '')}"]`)?.focus({ preventScroll: true });
+        }
+        document.getElementById('audio-tracks')?.addEventListener('click', (e) => {
+          const t = e.target as HTMLElement;
+          const trackBtn = t.closest<HTMLElement>('[data-pick-track]');
+          const allBtn = t.closest<HTMLElement>('[data-all]');
+          const chBtn = t.closest<HTMLElement>('[data-ch]');
+          if (allBtn) {
+            const track = allBtn.dataset.all!, urls = trackUrls(track);
+            const got = urls.filter(isSaved).length, busy = urls.some((u) => progressOf(u) !== null);
+            if (busy) { rmKey = null; cancelMany(urls); }
+            else if (got === urls.length) { if (rmKey === `all|${track}`) { rmKey = null; void removeMany(urls); } else { rmKey = `all|${track}`; } }
+            else { rmKey = null; saveMany(urls); }
+          } else if (chBtn) {
+            const [track, c] = chBtn.dataset.ch!.split('|'); const url = audioUrl(bookCode(), track, Number(c));
+            if (isSaved(url)) { if (rmKey === chBtn.dataset.ch) { rmKey = null; void remove(url); } else { rmKey = chBtn.dataset.ch!; } }
+            else if (progressOf(url) !== null) { rmKey = null; cancelMany([url]); }
+            else { rmKey = null; void save(url); }
+          } else if (trackBtn) {
+            rmKey = null;
+            setDialect(trackBtn.dataset.pickTrack as Dialect);
+          }
+          renderAudioTracks();
+        }, { signal });
+        // Tapping anywhere else cancels a pending "tap again to remove".
+        document.addEventListener('click', (e) => {
+          if (rmKey && !(e.target as HTMLElement).closest?.('[data-ch], [data-all]')) { rmKey = null; renderAudioTracks(); }
+        }, { signal });
+        window.addEventListener('ntb:dialect-changed', renderAudioTracks, { signal });
+        window.addEventListener('ntb:book-loaded', renderAudioTracks, { signal });
+        window.addEventListener('ntb:downloads-changed', () => { renderAudioTracks(); if (downloadsView) renderDownloadsView(); if (!bookSheet?.classList.contains('hidden')) renderBookList(); }, { signal });
+
+        // Downloads view: every saved track, grouped by book.
+        let clearArmed = false;
+        function renderDownloadsView() {
+          const list = document.getElementById('dl-list');
+          if (!list) return;
+          const books: { code: string; names: Record<string, string>; chapters: number }[] = (window as any).__BOOKS__ ?? [];
+          const lang = getTextLang();
+          const groups = new Map<string, Map<string, { n: number; bytes: number }>>();
+          for (const u of savedUrls()) {
+            const q = parseUrl(u); if (!q) continue;
+            const byTrack = groups.get(q.book) ?? new Map(); groups.set(q.book, byTrack);
+            const cur = byTrack.get(q.track) ?? { n: 0, bytes: 0 };
+            cur.n++; cur.bytes += chapterBytes(q.book, q.track, q.n); byTrack.set(q.track, cur);
+          }
+          let total = 0, html = '';
+          for (const b of books) {
+            const byTrack = groups.get(b.code); if (!byTrack) continue;
+            const big = b.names[lang] ?? b.names.en, cls = lang === 'bo' ? 'tibetan' : lang === 'cmn' ? 'chinese' : '';
+            html += `<div class="dl-book"><span class="big ${cls}">${big}</span>${lang !== 'en' ? `<span class="sub">${b.names.en}</span>` : ''}</div>`;
+            for (const d of ['adx', 'bod', 'khg', 'eng', 'cmn'] as Dialect[]) {
+              const g = byTrack.get(d); if (!g) continue;
+              total += g.bytes;
+              const l = DIALECT_LABELS[d], tib = d === 'adx' || d === 'bod' || d === 'khg';
+              html += `<div class="dl-row"><div class="info"><div class="tname" style="display:flex;align-items:baseline;gap:8px">${tib ? `<span class="tibetan" style="font-size:1.2rem">${l.bo}</span>` : ''}<span style="font-size:.95rem;font-weight:700">${l.en}</span></div><div class="meta">${g.n}/${b.chapters} · ${formatMB(g.bytes)}</div></div><button type="button" class="dl-iconbtn" data-rm-track="${b.code}|${d}" aria-label="Remove ${l.en} from ${b.names.en}">${TRASH}</button></div>`;
+            }
+          }
+          list.innerHTML = html || `<div class="dl-empty">${ARROW.replace('width="16" height="16"', 'width="34" height="34"')}</div>`;
+          const totalEl = document.getElementById('dl-total'); if (totalEl) totalEl.textContent = html ? formatMB(total) : '';
+          const clear = document.getElementById('dl-clear') as HTMLButtonElement | null;
+          if (clear) { clear.disabled = !html; clear.classList.toggle('rm', clearArmed && !!html); clear.textContent = clearArmed && html ? 'Clear all?' : 'Clear all'; }
+        }
+        function showDownloadsView(on: boolean) {
+          downloadsView = on; clearArmed = false;
+          // inline style, not the `hidden` class: .settings-tabs sets its own display:flex
+          const tabsEl = document.querySelector<HTMLElement>('.settings-tabs');
+          if (tabsEl) tabsEl.style.display = on ? 'none' : '';
+          document.getElementById('settings-panel-downloads')?.classList.toggle('hidden', !on);
+          if (on) { panelText?.classList.add('hidden'); panelAudio?.classList.add('hidden'); renderDownloadsView(); document.getElementById('dl-back')?.focus(); }
+          else { showSettingsTab('audio'); document.getElementById('open-downloads')?.focus(); }
+        }
+        document.getElementById('open-downloads')?.addEventListener('click', () => showDownloadsView(true), { signal });
+        document.getElementById('dl-back')?.addEventListener('click', () => showDownloadsView(false), { signal });
+        document.getElementById('dl-clear')?.addEventListener('click', () => {
+          if (!clearArmed) { clearArmed = true; renderDownloadsView(); return; }
+          clearArmed = false; void clearAll();
+        }, { signal });
+        document.getElementById('dl-list')?.addEventListener('click', (e) => {
+          const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-rm-track]'); if (!btn) return;
+          const [b, t] = btn.dataset.rmTrack!.split('|');
+          void removeMany(savedUrls().filter((u) => { const q = parseUrl(u); return q?.book === b && q.track === t; }));
+        }, { signal });
+        renderAudioTracks();
+
+        // ─── Book picker ───
+        const bookBtn = document.getElementById('book-btn');
+        const bookSheet = document.getElementById('book-sheet');
+        const bookSheetPanel = document.getElementById('book-sheet-panel');
+        const bookList = document.getElementById('book-list');
+        type BookRow = { code: string; names: Record<string, string> };
+        function bookBytes(code: string): number {
+          return savedUrls().reduce((a, u) => { const q = parseUrl(u); return a + (q && q.book === code ? chapterBytes(q.book, q.track, q.n) : 0); }, 0);
+        }
+        function renderBookList() {
+          if (!bookList) return;
+          const books: BookRow[] = (window as any).__BOOKS__ ?? [];
+          const current = (window as any).__BOOK_CODE__ as string | undefined;
+          const lang = getTextLang();
+          bookList.innerHTML = books.map((b) => {
+            const big = b.names[lang] ?? b.names.en;
+            const cls = lang === 'bo' ? 'tibetan' : lang === 'cmn' ? 'chinese' : '';
+            return `<button type="button" class="book-row" data-pick-book="${b.code}" aria-current="${b.code === current}">
+              <span class="nm"><span class="big ${cls}">${big}</span>${lang !== 'en' ? `<span class="sub">${b.names.en}</span>` : ''}</span>
+              ${bookBytes(b.code) ? `<span class="bsz">${formatMB(bookBytes(b.code))}</span>` : ''}${b.code === current ? '<span class="tick" aria-hidden="true">✓</span>' : ''}
+            </button>`;
+          }).join('');
+        }
+        function setBookSheet(open: boolean) {
+          if (open) renderBookList();
+          bookSheet?.classList.toggle('hidden', !open);
+          bookBtn?.setAttribute('aria-expanded', String(open));
+        }
+        bookBtn?.addEventListener('click', () => setBookSheet(bookSheet?.classList.contains('hidden') ?? true), { signal });
+        bookList?.addEventListener('click', (e) => {
+          const row = (e.target as HTMLElement).closest<HTMLElement>('[data-pick-book]');
+          if (!row) return;
+          setBookSheet(false);
+          setBook(row.dataset.pickBook!);
+        }, { signal });
+        // Like the other sheets: the backdrop passes taps through, so close on any outside tap.
+        document.addEventListener('click', (e) => {
+          if (!bookSheet || bookSheet.classList.contains('hidden')) return;
+          const target = e.target as Node;
+          if (!document.contains(target)) return;
+          if (bookSheetPanel?.contains(target) || bookBtn?.contains(target)) return;
+          setBookSheet(false);
+        }, { signal });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setBookSheet(false); }, { signal });
+        window.addEventListener('ntb:text-settings-changed', () => { if (!bookSheet?.classList.contains('hidden')) renderBookList(); }, { signal });
+        window.addEventListener('ntb:book-loaded', () => { if (!bookSheet?.classList.contains('hidden')) renderBookList(); }, { signal });
+        // A book that was never opened can't load while offline (see index.astro).
+        window.addEventListener('ntb:book-load-failed', () => {
+          const t = document.querySelector<HTMLElement>('#share-toast > div');
+          const old = t?.textContent ?? '';
+          if (t) t.textContent = 'Not available offline';
+          showToast();
+          setTimeout(() => { if (t) t.textContent = old; }, 2600);
+        }, { signal });
+
+        // ─── About sheet ───
+        const aboutBtn = document.getElementById('about-btn');
+        const aboutSheet = document.getElementById('about-sheet');
+        const aboutSheetPanel = document.getElementById('about-sheet-panel');
+        const aboutClose = document.getElementById('about-close');
+        const aboutContent = document.getElementById('about-content');
+
+        // English and Chinese copy are provisional translations of John's
+        // Tibetan text (flag for his review, same as the LISTEN-label
+        // translation above) — re-rendered on every language change, not
+        // just on open, same as the chapter modal's own READ section.
+        // Hindi/Nepali have no About-page translation yet (only the reading
+        // text itself), so they fall through to the English copy below —
+        // same "no dedicated asset yet" fallback as Chinese's header logo.
+        function renderAboutContent() {
+          if (!aboutContent) return;
+          const lang = getTextLang();
+          if (lang === 'bo') {
+            aboutContent.innerHTML = `
+            <h2 class="tibetan" style="text-align:center;font-size:1.5rem;font-weight:700;color:#1c1710;margin:1.5rem 0 1.25rem">རྒྱུན་ཤེས།</h2>
+            <div class="tibetan" style="text-align:left;font-size:1.05rem;line-height:2;color:#1c1710">
+              <p>བེད་སྤྱོད་པར་གཞི། 1.0</p>
+              <p>པར་དབང་། (c) 2026 new-tibetan-bible.com</p>
+              <p style="margin-top:1rem">མཉེན་ཆས་འདི་གཞན་ལ་སྤྲོད་རྒྱུ་ཡིན།</p>
+              <p style="margin-top:1rem">དམ་པའི་གསུང་རབ་སྐོར་གྱི་མཉེན་ཆས་གཞན་རྣམས་དང་བོད་འགྱུར་གསར་མ་པར་གཞི་དངོས་སུ་འབྱོར་འདོད་ན། <a href="https://new-tibetan-bible.com" style="color:#a38a1e;text-decoration:none">new-tibetan-bible.com</a> ལ་གཟིགས་རོགས།</p>
+              <p style="margin-top:1rem">གལ་ཏེཁྱེད་ཀྱི་བློ་ངོར་དོགས་འདྲིའམ་བསམ་ཚུལ་ཞིག་ཡོད་ན་ང་ཚོར་འབྲེལ་གཏུག་གནང་བར་ཞུ།<br /><a href="mailto:info@new-tibetan-bible.com" style="color:#a38a1e;text-decoration:none">info@new-tibetan-bible.com</a></p>
+            </div>
+          `;
+          } else if (lang === 'cmn') {
+            aboutContent.innerHTML = `
+            <h2 class="chinese" style="text-align:center;font-size:1.5rem;font-weight:700;color:#1c1710;margin:1.5rem 0 1.25rem">关于</h2>
+            <div class="chinese" style="text-align:left;font-size:1.05rem;line-height:1.9;color:#1c1710">
+              <p>版本 1.0</p>
+              <p>版权所有 © 2026 new-tibetan-bible.com</p>
+              <p style="margin-top:1rem">本应用程序可自由分享给他人。</p>
+              <p style="margin-top:1rem">如需其他圣经相关软件，以及藏文圣经新译本应用程序本身，请访问 <a href="https://new-tibetan-bible.com" style="color:#a38a1e;text-decoration:none">new-tibetan-bible.com</a>。</p>
+              <p style="margin-top:1rem">有任何问题或建议？请通过以下邮箱与我们联系：<br /><a href="mailto:info@new-tibetan-bible.com" style="color:#a38a1e;text-decoration:none">info@new-tibetan-bible.com</a></p>
+            </div>
+          `;
+          } else {
+            aboutContent.innerHTML = `
+            <h2 style="text-align:center;font-size:1.5rem;font-weight:700;color:#1c1710;margin:1.5rem 0 1.25rem">About</h2>
+            <div style="text-align:left;font-size:1rem;line-height:1.8;color:#1c1710">
+              <p>Version 1.0</p>
+              <p>Copyright © 2026 new-tibetan-bible.com</p>
+              <p style="margin-top:1rem">This app may be freely shared with others.</p>
+              <p style="margin-top:1rem">For other Scripture-related software, and the New Tibetan Bible app itself, visit <a href="https://new-tibetan-bible.com" style="color:#a38a1e;text-decoration:none">new-tibetan-bible.com</a>.</p>
+              <p style="margin-top:1rem">Questions or feedback?<br /><a href="mailto:info@new-tibetan-bible.com" style="color:#a38a1e;text-decoration:none">info@new-tibetan-bible.com</a></p>
+            </div>
+          `;
+          }
+        }
+        renderAboutContent();
+        window.addEventListener('ntb:text-settings-changed', renderAboutContent, { signal });
+
+        aboutBtn?.addEventListener('click', () => {
+          aboutSheet?.classList.remove('hidden');
+        }, { signal });
+        aboutClose?.addEventListener('click', () => {
+          aboutSheet?.classList.add('hidden');
+        }, { signal });
+        // Same outside-click-to-close pattern as the settings sheet, plus
+        // the explicit close button above (About's content is longer/scrolls,
+        // so an obvious close affordance matters more here).
+        document.addEventListener('click', (e) => {
+          if (!aboutSheet || aboutSheet.classList.contains('hidden')) return;
+          const target = e.target as Node;
+          if (aboutSheetPanel?.contains(target) || aboutBtn?.contains(target)) return;
+          aboutSheet.classList.add('hidden');
+        }, { signal });
+      }
+
+      document.addEventListener('astro:page-load', initHeader);
+
+      // Also run once immediately — see the matching comment in
+      // index.astro's own `initModal()` call for why: on a cold/first load,
+      // this script can still be loading when `astro:page-load` fires for
+      // that very first navigation, so the listener above alone can miss
+      // it. initHeader()'s AbortController guard (every listener it binds
+      // uses `{ signal }`) makes it safe to call twice in a row against the
+      // same DOM.
+      initHeader();
+    </script>
+      <style is:global>
+      .settings-tabs { display: flex; padding: 6px 20px 0; border-bottom: 1px solid rgba(28,23,16,.12); position: sticky; top: 0; background: #fff; z-index: 2; border-radius: 1rem 1rem 0 0; }
+      .settings-tabs button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 1rem; font-weight: 700; padding: 14px 4px 12px; color: rgba(28,23,16,.55); background: none; border: 0; border-bottom: 3px solid transparent; margin-bottom: -1px; cursor: pointer; }
+      .settings-tabs button[aria-selected="true"] { color: #1c1710; border-bottom-color: #cfb63c; }
+      .settings-tabs button:focus-visible { outline: 3px solid #a38a1e; outline-offset: -3px; border-radius: 6px; }
+      /* Audio tab: one box per track (title row + its chapter grid when selected) */
+      /* Audio tab: white sheet, faded-gold box per track, full gold for the selected one
+         (same idea as the Text tab's buttons). */
+      .tbox { border-radius: 14px; background: #f5efd2; margin-bottom: 10px; }
+      .tbox.cur { background: #cfb63c; }
+      .thead { display: flex; align-items: center; gap: 8px; padding: 6px 10px 6px 4px; min-height: 60px; }
+      .track-row { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; border: 0; background: none; padding: 8px 6px 8px 8px; text-align: left; min-height: 48px; cursor: pointer; border-radius: 10px; }
+      .track-row .radio { flex: none; width: 22px; height: 22px; border-radius: 50%; border: 2px solid #b9b19a; background: #fff; position: relative; }
+      .tbox.cur .track-row .radio { border-color: #1c1710; }
+      .tbox.cur .track-row .radio::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: #1c1710; }
+      .track-row .tname { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+      .track-row .tname .tibetan { font-size: 1.2rem; }
+      .track-row .tname .en { font-size: .95rem; font-weight: 700; }
+      .allbox { flex: none; display: flex; flex-direction: row; align-items: center; gap: 8px; }
+      .allbtn { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; min-width: 72px; padding: 6px 14px; border-radius: 999px; border: 1.5px solid rgba(28,23,16,.2); background: #fff; color: #1c1710; font-size: .9rem; font-weight: 700; cursor: pointer; }
+      .allbtn.dark { background: #1c1710; border-color: #1c1710; color: #fff; }
+      .allbtn.rm { background: #fbf0cf; border-color: #e6cf62; }
+      .tbox.cur .allsz { color: rgba(28,23,16,.75); }
+      .allsz { font-size: .72rem; color: rgba(28,23,16,.6); font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .tbody { padding: 2px 12px 14px; }
+      .eyebrow { font-size: .72rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: rgba(28,23,16,.75); margin: 0 0 8px; }
+      .eyebrow .cnt { letter-spacing: .04em; font-variant-numeric: tabular-nums; }
+      .chs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+      .chcell { position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; min-height: 44px; border: 1.5px solid rgba(28,23,16,.2); border-radius: 10px; background: #fff; color: #1c1710; font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums; cursor: pointer; padding: 0; }
+      .chcell.dark { background: #1c1710; border-color: #1c1710; color: #fff; }
+      .chcell.rm { background: #fbf0cf; border-color: #e6cf62; }
+      .chcell .bar { position: absolute; left: 0; bottom: 0; height: 4px; background: #1c1710; }
+      .track-row:focus-visible, .allbtn:focus-visible, .chcell:focus-visible, .all-dl-row:focus-visible, .dl-iconbtn:focus-visible, .dl-clear:focus-visible, .book-row:focus-visible { outline: 3px solid #a38a1e; outline-offset: 2px; }
+      .all-dl-row { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; border-top: 1px solid rgba(28,23,16,.12); background: none; margin-top: 14px; padding: 14px 2px 2px; cursor: pointer; font-size: 1rem; font-weight: 700; text-align: left; }
+      .all-dl-row .sz { margin-left: auto; font-size: .88rem; font-weight: 400; color: rgba(28,23,16,.55); font-variant-numeric: tabular-nums; }
+      .dl-head { display: flex; align-items: center; gap: 6px; padding: 10px 14px 10px 10px; border-bottom: 1px solid rgba(28,23,16,.12); position: sticky; top: 0; background: #fff; z-index: 2; border-radius: 1rem 1rem 0 0; }
+      .dl-head h3 { margin: 0; font-size: 1.05rem; font-weight: 700; flex: 1; }
+      .dl-total { font-size: .9rem; color: rgba(28,23,16,.55); font-variant-numeric: tabular-nums; }
+      .dl-iconbtn { border: 0; background: none; padding: 6px; border-radius: 50%; min-width: 40px; min-height: 40px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+      .dl-clear { border: 1.5px solid rgba(28,23,16,.2); background: #fff; border-radius: 999px; padding: 8px 14px; min-height: 36px; font-size: .86rem; font-weight: 700; cursor: pointer; }
+      .dl-clear[disabled] { opacity: .4; cursor: default; }
+      .dl-clear.rm { background: #fbf0cf; border-color: #e6cf62; }
+      .dl-book { display: flex; align-items: baseline; gap: 8px; margin: 16px 0 4px; }
+      .dl-book .big { font-size: 1.3rem; }
+      .dl-book .sub { font-size: .95rem; font-weight: 700; }
+      .dl-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid rgba(28,23,16,.12); }
+      .dl-row .info { flex: 1; min-width: 0; }
+      .dl-row .meta { font-size: .8rem; color: rgba(28,23,16,.55); font-variant-numeric: tabular-nums; }
+      .dl-empty { padding: 44px 0 36px; text-align: center; color: rgba(28,23,16,.45); }
+      .book-row { display: flex; align-items: center; gap: 12px; width: 100%; border: 0; background: none; text-align: left; padding: 12px 4px; border-bottom: 1px solid rgba(28,23,16,.12); min-height: 60px; cursor: pointer; }
+      .book-row:last-child { border-bottom: 0; }
+      .book-row .nm { display: flex; flex-direction: column; min-width: 0; }
+      .book-row .nm .big { font-size: 1.4rem; line-height: 1.25; }
+      .book-row .nm .sub { font-size: .95rem; font-weight: 700; }
+      .book-row .tick { margin-left: auto; color: #1c1710; }
+      .book-row .bsz { margin-left: auto; font-size: .85rem; color: rgba(28,23,16,.55); font-variant-numeric: tabular-nums; }
+      .book-row .bsz + .tick { margin-left: 8px; }
+    </style>
+  </body>
+</html>
